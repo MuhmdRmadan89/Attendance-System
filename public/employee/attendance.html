@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>الحضور والانصراف</title>
+  <link rel="stylesheet" href="/assets/css/style.css"/>
+</head>
+<body class="bg">
+
+  <div class="shell">
+    <div class="card">
+
+      <div class="top">
+        <div>
+          <h1>الحضور والانصراف</h1>
+          <div class="muted">
+            تاريخ اليوم:
+            <span class="badge" id="date">...</span>
+          </div>
+        </div>
+        <button class="link" id="logout">خروج</button>
+      </div>
+
+      <div class="grid">
+        <button class="btn green block hidden" id="inBtn">
+          تسجيل حضور
+        </button>
+
+        <button class="btn red block hidden" id="outBtn">
+          تسجيل انصراف
+        </button>
+      </div>
+
+      <div class="box hidden" id="statusBox"></div>
+      <div class="msg" id="msg"></div>
+
+      <div class="muted small" style="margin-top:12px">
+        ⚠ يجب أن تكون داخل نطاق المقر لتسجيل الحضور أو الانصراف
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+
+  <script>
+
+    // تسجيل خروج
+    qs('logout').onclick = () => {
+      clearAuth();
+      location.href = '/employee/login.html';
+    };
+
+    async function loadToday() {
+      try {
+        const data = await api('/api/employee/today');
+
+        qs('date').textContent = data.date;
+
+        // إظهار الأزرار حسب الحالة
+        qs('inBtn').classList.toggle('hidden', !data.canCheckIn);
+        qs('outBtn').classList.toggle('hidden', !data.canCheckOut);
+
+        // لو سجل حضور وانصراف بالفعل
+        if (data.day && data.day.check_in_time && data.day.check_out_time) {
+          qs('statusBox').classList.remove('hidden');
+          qs('statusBox').textContent = "✅ تم تسجيل حضور وانصراف اليوم";
+        } else {
+          qs('statusBox').classList.add('hidden');
+        }
+
+      } catch (err) {
+        setMsg("❌ " + err.message);
+        if (err.message.includes("Unauthorized")) {
+          location.href = '/employee/login.html';
+        }
+      }
+    }
+
+    // تسجيل حضور
+    qs('inBtn').onclick = async () => {
+      try {
+        setMsg('');
+        const locationData = await getLocation();
+        const deviceId = getDeviceId();
+
+        const res = await api('/api/employee/checkin', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...locationData,
+            deviceId
+          })
+        });
+
+        setMsg("✅ تم تسجيل الحضور (" + res.status + ")", true);
+        loadToday();
+
+      } catch (err) {
+        setMsg("❌ " + err.message);
+      }
+    };
+
+    // تسجيل انصراف
+    qs('outBtn').onclick = async () => {
+      try {
+        setMsg('');
+        const locationData = await getLocation();
+        const deviceId = getDeviceId();
+
+        const res = await api('/api/employee/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...locationData,
+            deviceId
+          })
+        });
+
+        setMsg("✅ تم تسجيل الانصراف (" + res.status + ")", true);
+        loadToday();
+
+      } catch (err) {
+        setMsg("❌ " + err.message);
+      }
+    };
+
+    // تحميل أولي
+    loadToday();
+
+  </script>
+
+</body>
+</html>
