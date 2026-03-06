@@ -1,0 +1,123 @@
+﻿<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#2a8fc4" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>كشف الراتب - إنجاز</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body class="bg">
+  <div class="shell">
+    <div class="card wide">
+      <div class="top">
+        <div>
+          <h1>كشف حساب الراتب</h1>
+          <div class="muted">ملخص الساعات والمكافآت والخصومات</div>
+        </div>
+        <div class="navbar">
+          <button class="link" id="attendanceBtn">الحضور</button>
+          <button class="link" id="logoutBtn">خروج</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" style="max-width:240px">
+          <label>الشهر</label>
+          <input id="month" type="month" />
+        </div>
+        <button class="btn" id="loadBtn">تحديث الكشف</button>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="label">ساعات العمل</div><div class="value" id="workedHours">0</div></div>
+        <div class="kpi"><div class="label">المكافآت</div><div class="value" id="bonuses">0</div></div>
+        <div class="kpi"><div class="label">إجمالي الخصومات</div><div class="value" id="deductions">0</div></div>
+        <div class="kpi"><div class="label">الصافي</div><div class="value" id="net">0</div></div>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>الدخول</th>
+              <th>الخروج</th>
+              <th>ساعات</th>
+              <th>تأخير (دقيقة)</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceBody"></tbody>
+        </table>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>التاريخ</th>
+              <th>النوع</th>
+              <th>المبلغ</th>
+              <th>السبب</th>
+            </tr>
+          </thead>
+          <tbody id="financialBody"></tbody>
+        </table>
+      </div>
+
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+  <script>
+    if (!ensureAuthOrRedirect('/employee/login.html')) throw new Error('auth required');
+
+    const nowMonth = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+    qs('month').value = nowMonth();
+
+    qs('attendanceBtn').onclick = () => go('/employee/attendance.html');
+    qs('logoutBtn').onclick = () => { clearAuth(); go('/employee/login.html'); };
+
+    function money(v) { return Number(v || 0).toFixed(2); }
+    function dt(v) { return v ? new Date(v).toLocaleString() : '-'; }
+
+    async function loadSalary() {
+      try {
+        setMsg('');
+        const month = qs('month').value;
+        const data = await api(`/api/employee/salary?month=${encodeURIComponent(month)}`);
+
+        qs('workedHours').textContent = data.totals.workedHours;
+        qs('bonuses').textContent = money(data.totals.bonuses);
+        qs('deductions').textContent = money(data.totals.lateDeduction + data.totals.manualDeductions);
+        qs('net').textContent = money(data.totals.net);
+
+        qs('attendanceBody').innerHTML = '';
+        data.attendance.forEach((r) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${r.date}</td><td>${dt(r.checkIn)}</td><td>${dt(r.checkOut)}</td><td>${r.workedHours}</td><td>${r.lateMinutes}</td>`;
+          qs('attendanceBody').appendChild(tr);
+        });
+
+        qs('financialBody').innerHTML = '';
+        data.financials.forEach((f) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${f.date}</td><td>${f.type === 'bonus' ? 'مكافأة' : 'خصم'}</td><td>${money(f.amount)}</td><td>${f.reason || '-'}</td>`;
+          qs('financialBody').appendChild(tr);
+        });
+      } catch (error) {
+        if (String(error.message).includes('Unauthorized')) return go('/employee/login.html');
+        setMsg(error.message);
+      }
+    }
+
+    qs('loadBtn').onclick = loadSalary;
+    loadSalary();
+  </script>
+</body>
+</html>

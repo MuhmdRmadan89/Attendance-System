@@ -1,0 +1,10 @@
+﻿{
+  "name": "Injaz HR & Attendance",
+  "short_name": "Injaz",
+  "start_url": "/employee/login.html",
+  "display": "standalone",
+  "background_color": "#d2e5f8",
+  "theme_color": "#1f7aa8",
+  "lang": "ar",
+  "dir": "rtl"
+}

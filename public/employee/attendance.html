@@ -1,133 +1,201 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>الحضور والانصراف</title>
-  <link rel="stylesheet" href="/assets/css/style.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#2a8fc4" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>الحضور والانصراف - إنجاز</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body class="bg">
-
   <div class="shell">
     <div class="card">
-
       <div class="top">
         <div>
           <h1>الحضور والانصراف</h1>
-          <div class="muted">
-            تاريخ اليوم:
-            <span class="badge" id="date">...</span>
-          </div>
+          <div class="muted">تاريخ اليوم: <span class="badge" id="date">-</span></div>
         </div>
-        <button class="link" id="logout">خروج</button>
+        <div class="navbar">
+          <button class="link" id="salaryBtn">كشف الراتب</button>
+          <button class="link" id="logoutBtn">خروج</button>
+        </div>
       </div>
 
-      <div class="grid">
-        <button class="btn green block hidden" id="inBtn">
-          تسجيل حضور
-        </button>
-
-        <button class="btn red block hidden" id="outBtn">
-          تسجيل انصراف
-        </button>
+      <div class="kpis" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+        <div class="kpi">
+          <div class="label">نطاق المكتب</div>
+          <div class="value" id="officeRadius">-</div>
+        </div>
+        <div class="kpi">
+          <div class="label">عمليات Offline معلقة</div>
+          <div class="value" id="queueSize">0</div>
+        </div>
       </div>
 
-      <div class="box hidden" id="statusBox"></div>
+      <div class="grid" style="margin-top:12px">
+        <button class="btn green block hidden" id="checkInBtn">تسجيل حضور</button>
+        <button class="btn red block hidden" id="checkOutBtn">تسجيل انصراف</button>
+      </div>
+
+      <div class="box" id="secureBox">
+        <label style="margin:0;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="useBiometric" />
+          <span>استخدم البصمة/الوجه قبل تسجيل الحضور والانصراف</span>
+        </label>
+        <div class="small muted" id="bioHint" style="margin-top:6px"></div>
+      </div>
+
+      <div class="box hidden" id="dayBox"></div>
+
+      <div class="box">
+        <div class="small muted">WebAuthn</div>
+        <button class="btn ghost block" id="registerBioBtn">ربط بصمة/وجه على هذا الجهاز</button>
+      </div>
+
       <div class="msg" id="msg"></div>
-
-      <div class="muted small" style="margin-top:12px">
-        ⚠ يجب أن تكون داخل نطاق المقر لتسجيل الحضور أو الانصراف
-      </div>
-
     </div>
   </div>
 
+  <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.umd.min.js"></script>
   <script src="/assets/js/common.js"></script>
-
   <script>
+    if (!ensureAuthOrRedirect('/employee/login.html')) throw new Error('auth required');
 
-    // تسجيل خروج
-    qs('logout').onclick = () => {
-      clearAuth();
-      location.href = '/employee/login.html';
-    };
+    let webauthnSupported = false;
+    let webauthnEnrolled = false;
 
-    async function loadToday() {
+    qs('logoutBtn').onclick = () => { clearAuth(); go('/employee/login.html'); };
+    qs('salaryBtn').onclick = () => go('/employee/salary.html');
+
+    function refreshQueueCount() {
+      qs('queueSize').textContent = loadQueue().length;
+    }
+
+    function toLocalText(value) {
+      return value ? new Date(value).toLocaleString() : '-';
+    }
+
+    async function loadWebAuthnStatus() {
       try {
-        const data = await api('/api/employee/today');
+        const data = await api('/api/webauthn/status');
+        webauthnSupported = !!data.supported;
+        webauthnEnrolled = !!data.enrolled;
 
-        qs('date').textContent = data.date;
+        const checkbox = qs('useBiometric');
+        checkbox.checked = false;
+        checkbox.disabled = !(webauthnSupported && webauthnEnrolled);
 
-        // إظهار الأزرار حسب الحالة
-        qs('inBtn').classList.toggle('hidden', !data.canCheckIn);
-        qs('outBtn').classList.toggle('hidden', !data.canCheckOut);
-
-        // لو سجل حضور وانصراف بالفعل
-        if (data.day && data.day.check_in_time && data.day.check_out_time) {
-          qs('statusBox').classList.remove('hidden');
-          qs('statusBox').textContent = "✅ تم تسجيل حضور وانصراف اليوم";
+        if (!webauthnSupported) {
+          qs('bioHint').textContent = 'WebAuthn غير متاح حالياً. تأكد من تنفيذ SQL patch.';
+        } else if (!webauthnEnrolled) {
+          qs('bioHint').textContent = 'لم يتم ربط بصمة/وجه لهذا الحساب بعد.';
         } else {
-          qs('statusBox').classList.add('hidden');
+          qs('bioHint').textContent = 'يمكنك تفعيل البصمة/الوجه قبل تسجيل الحضور أو الانصراف.';
         }
-
-      } catch (err) {
-        setMsg("❌ " + err.message);
-        if (err.message.includes("Unauthorized")) {
-          location.href = '/employee/login.html';
-        }
+      } catch {
+        qs('useBiometric').checked = false;
+        qs('useBiometric').disabled = true;
+        qs('bioHint').textContent = 'تعذر التحقق من حالة WebAuthn.';
       }
     }
 
-    // تسجيل حضور
-    qs('inBtn').onclick = async () => {
+    async function loadToday() {
+      const data = await api('/api/employee/today');
+      qs('date').textContent = data.date;
+      qs('officeRadius').textContent = `${data.office.radiusMeters}m`;
+      qs('checkInBtn').classList.toggle('hidden', !data.canCheckIn);
+      qs('checkOutBtn').classList.toggle('hidden', !data.canCheckOut);
+
+      const day = data.day;
+      if (!day) {
+        qs('dayBox').classList.add('hidden');
+        return;
+      }
+
+      qs('dayBox').classList.remove('hidden');
+      qs('dayBox').innerHTML = `
+        <div><strong>دخول:</strong> ${toLocalText(day.check_in)}</div>
+        <div><strong>خروج:</strong> ${toLocalText(day.check_out)}</div>
+      `;
+    }
+
+    async function submit(action) {
+      try {
+        setMsg('جاري قراءة الموقع...');
+        const loc = await getLocation();
+        const requireBio = !!qs('useBiometric').checked;
+
+        if (requireBio) {
+          if (!navigator.onLine) {
+            throw new Error('يتطلب وضع البصمة/الوجه اتصال إنترنت أثناء التسجيل');
+          }
+
+          const { startAuthentication } = SimpleWebAuthnBrowser;
+          const options = await api('/api/webauthn/attendance-options', {
+            method: 'POST',
+            body: JSON.stringify({ action }),
+          });
+          const assertion = await startAuthentication(options);
+
+          await api('/api/webauthn/attendance-verify', {
+            method: 'POST',
+            body: JSON.stringify({ action, assertion, loc }),
+          });
+
+          setMsg(action === 'checkin' ? 'تم تسجيل الحضور مع تحقق البصمة/الوجه' : 'تم تسجيل الانصراف مع تحقق البصمة/الوجه', true);
+        } else {
+          try {
+            await api(`/api/employee/${action}`, { method: 'POST', body: JSON.stringify(loc) });
+            setMsg(action === 'checkin' ? 'تم تسجيل الحضور' : 'تم تسجيل الانصراف', true);
+          } catch (error) {
+            if (!navigator.onLine || /Failed to fetch/i.test(String(error.message))) {
+              queueAttendanceAction(action, loc);
+              setMsg('تم حفظ العملية محلياً وسيتم رفعها عند عودة الاتصال', true);
+            } else {
+              throw error;
+            }
+          }
+        }
+
+        const synced = await flushAttendanceQueue();
+        if (synced.sent > 0) setMsg(`تمت مزامنة ${synced.sent} عملية`, true);
+
+        refreshQueueCount();
+        await loadToday();
+      } catch (error) {
+        setMsg(error.message);
+      }
+    }
+
+    qs('checkInBtn').onclick = () => submit('checkin');
+    qs('checkOutBtn').onclick = () => submit('checkout');
+
+    qs('registerBioBtn').onclick = async () => {
       try {
         setMsg('');
-        const locationData = await getLocation();
-        const deviceId = getDeviceId();
-
-        const res = await api('/api/employee/checkin', {
-          method: 'POST',
-          body: JSON.stringify({
-            ...locationData,
-            deviceId
-          })
-        });
-
-        setMsg("✅ تم تسجيل الحضور (" + res.status + ")", true);
-        loadToday();
-
-      } catch (err) {
-        setMsg("❌ " + err.message);
+        const { startRegistration } = SimpleWebAuthnBrowser;
+        const options = await api('/api/webauthn/register-options');
+        const registrationResponse = await startRegistration(options);
+        await api('/api/webauthn/register-verify', { method: 'POST', body: JSON.stringify(registrationResponse) });
+        setMsg('تم تفعيل WebAuthn بنجاح', true);
+        await loadWebAuthnStatus();
+      } catch (error) {
+        setMsg(error.message);
       }
     };
 
-    // تسجيل انصراف
-    qs('outBtn').onclick = async () => {
+    (async () => {
       try {
-        setMsg('');
-        const locationData = await getLocation();
-        const deviceId = getDeviceId();
-
-        const res = await api('/api/employee/checkout', {
-          method: 'POST',
-          body: JSON.stringify({
-            ...locationData,
-            deviceId
-          })
-        });
-
-        setMsg("✅ تم تسجيل الانصراف (" + res.status + ")", true);
-        loadToday();
-
-      } catch (err) {
-        setMsg("❌ " + err.message);
+        await flushAttendanceQueue();
+        refreshQueueCount();
+        await loadWebAuthnStatus();
+        await loadToday();
+      } catch (error) {
+        if (String(error.message).includes('Unauthorized')) return go('/employee/login.html');
+        setMsg(error.message);
       }
-    };
-
-    // تحميل أولي
-    loadToday();
-
+    })();
   </script>
-
 </body>
 </html>

@@ -1,218 +1,103 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Admin Dashboard</title>
-  <link rel="stylesheet" href="/assets/css/style.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#2a8fc4" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>لوحة الإدارة - إنجاز</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body class="bg">
   <div class="shell">
     <div class="card wide">
       <div class="top">
         <div>
-          <h1>لوحة الأدمن</h1>
-          <div class="muted">عرض الحضور + إدارة الموظفين + تصدير Excel</div>
+          <h1>لوحة الإدارة</h1>
+          <div class="muted">متابعة الحضور المباشر</div>
         </div>
-        <button class="link" id="logout">خروج</button>
+        <div class="navbar">
+          <button class="link" id="employeesPage">الموظفون</button>
+          <button class="link" id="payrollPage">الرواتب</button>
+          <button class="link" id="reportsPage">التقارير</button>
+          <button class="link" id="logoutBtn">خروج</button>
+        </div>
       </div>
 
-      <!-- Attendance -->
       <div class="row">
-        <div class="field">
-          <label>تاريخ العرض</label>
-          <input type="date" id="date"/>
+        <div class="field" style="max-width:220px">
+          <label>التاريخ</label>
+          <input type="date" id="date" />
         </div>
-        <button class="btn" id="load">عرض</button>
-        <button class="btn ghost" id="export">تصدير Excel</button>
+        <button class="btn" id="loadBtn">تحديث</button>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="label">إجمالي الموظفين</div><div class="value" id="totalEmployees">0</div></div>
+        <div class="kpi"><div class="label">متواجدون الآن</div><div class="value" id="onlineCount">0</div></div>
+        <div class="kpi"><div class="label">دخول اليوم</div><div class="value" id="todayIn">0</div></div>
+        <div class="kpi"><div class="label">انصراف اليوم</div><div class="value" id="todayOut">0</div></div>
+      </div>
+
+      <h2 style="margin-top:14px">الحضور اليومي</h2>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الموظف</th>
+              <th>الدخول</th>
+              <th>الخروج</th>
+              <th>مسافة الدخول</th>
+              <th>مسافة الخروج</th>
+            </tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
       </div>
 
       <div class="msg" id="msg"></div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>الاسم</th>
-              <th>يوزر</th>
-              <th>حضور</th>
-              <th>انصراف</th>
-              <th>مسافة حضور</th>
-              <th>حالة حضور</th>
-              <th>مسافة انصراف</th>
-              <th>حالة انصراف</th>
-            </tr>
-          </thead>
-          <tbody id="attBody"></tbody>
-        </table>
-      </div>
-
-      <hr style="border:none;border-top:1px solid rgba(255,255,255,.14);margin:16px 0">
-
-      <!-- Employees -->
-      <h2 style="margin:0 0 8px;font-size:18px">الموظفين</h2>
-
-      <div class="row">
-        <div class="field">
-          <label>الاسم</label>
-          <input id="empName" placeholder="مثال: Ahmed"/>
-        </div>
-        <div class="field">
-          <label>Username</label>
-          <input id="empUser" placeholder="مثال: ahmed"/>
-        </div>
-        <div class="field">
-          <label>Password</label>
-          <input id="empPass" placeholder="مثال: 123456"/>
-        </div>
-        <button class="btn" id="addEmp">إضافة موظف</button>
-      </div>
-
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>الاسم</th>
-              <th>يوزر</th>
-              <th>نشط</th>
-              <th>Device</th>
-              <th>إجراءات</th>
-            </tr>
-          </thead>
-          <tbody id="empBody"></tbody>
-        </table>
-      </div>
-
     </div>
   </div>
 
   <script src="/assets/js/common.js"></script>
   <script>
-    qs('logout').onclick = () => { clearAuth(); go('/admin/login.html'); };
+    if (!ensureAuthOrRedirect('/admin/login.html')) throw new Error('auth required');
 
-    // default date today
-    qs('date').value = new Date().toISOString().slice(0,10);
+    qs('date').value = new Date().toISOString().slice(0, 10);
+    qs('logoutBtn').onclick = () => { clearAuth(); go('/admin/login.html'); };
+    qs('employeesPage').onclick = () => go('/admin/employees.html');
+    qs('payrollPage').onclick = () => go('/admin/payroll.html');
+    qs('reportsPage').onclick = () => go('/admin/reports.html');
 
-    async function loadAttendance(){
-      const date = qs('date').value;
-      const data = await api('/api/admin/attendance?date=' + encodeURIComponent(date));
-      const body = qs('attBody');
-      body.innerHTML = '';
-      data.rows.forEach(r=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${r.name||''}</td>
-          <td>${r.username||''}</td>
-          <td>${r.check_in_time ? new Date(r.check_in_time).toLocaleString() : ''}</td>
-          <td>${r.check_out_time ? new Date(r.check_out_time).toLocaleString() : ''}</td>
-          <td>${r.check_in_distance_m ?? ''}</td>
-          <td>${r.check_in_status ?? ''}</td>
-          <td>${r.check_out_distance_m ?? ''}</td>
-          <td>${r.check_out_status ?? ''}</td>
-        `;
-        body.appendChild(tr);
-      });
-    }
+    function dt(v) { return v ? new Date(v).toLocaleString() : '-'; }
+    function dm(v) { return v == null ? 'غير متاح' : `${v} م`; }
 
-    async function loadEmployees(){
-      const data = await api('/api/admin/employees');
-      const body = qs('empBody');
-      body.innerHTML = '';
-      data.rows.forEach(r=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${r.name}</td>
-          <td>${r.username}</td>
-          <td>${r.is_active ? '✅' : '⛔'}</td>
-          <td>${r.device_id ? 'LOCKED' : '-'}</td>
-          <td>
-            <button class="btn ghost" data-act="toggle" data-id="${r.id}">تفعيل/تعطيل</button>
-            <button class="btn ghost" data-act="reset" data-id="${r.id}">Reset Device</button>
-          </td>
-        `;
-        body.appendChild(tr);
-      });
-    }
-
-    qs('load').onclick = async ()=>{
-      try{ setMsg(''); await loadAttendance(); setMsg('✅ تم التحديث', true); }
-      catch(e){ setMsg('❌ ' + e.message); }
-    };
-
-    qs('export').onclick = async ()=>{
-      try{
+    async function load() {
+      try {
         setMsg('');
-        const from = prompt('From date (YYYY-MM-DD):', qs('date').value);
-        if(!from) return;
-        const to = prompt('To date (YYYY-MM-DD):', qs('date').value);
-        if(!to) return;
+        const date = qs('date').value;
+        const live = await api(`/api/admin/dashboard/live?date=${encodeURIComponent(date)}`);
+        const daily = await api(`/api/admin/attendance?date=${encodeURIComponent(date)}`);
 
-        const token = getToken();
-        const url = `/api/admin/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-        const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
-        if(!res.ok){
-          let j={}; try{ j=await res.json(); }catch{}
-          throw new Error(j.error || 'Export failed');
-        }
-        const blob = await res.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `attendance_${from}_to_${to}.xlsx`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        setMsg('✅ تم تنزيل الملف', true);
-      }catch(e){
-        setMsg('❌ ' + e.message);
-      }
-    };
+        qs('totalEmployees').textContent = live.totalEmployees;
+        qs('onlineCount').textContent = live.onlineCount;
+        qs('todayIn').textContent = daily.rows.filter((r) => r.checkIn).length;
+        qs('todayOut').textContent = daily.rows.filter((r) => r.checkOut).length;
 
-    qs('addEmp').onclick = async ()=>{
-      try{
-        setMsg('');
-        const name = qs('empName').value.trim();
-        const username = qs('empUser').value.trim();
-        const password = qs('empPass').value;
-        await api('/api/admin/employees', {
-          method:'POST',
-          body: JSON.stringify({ name, username, password })
+        qs('body').innerHTML = '';
+        daily.rows.forEach((r) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${r.name}</td><td>${dt(r.checkIn)}</td><td>${dt(r.checkOut)}</td><td>${dm(r.checkInDistance)}</td><td>${dm(r.checkOutDistance)}</td>`;
+          qs('body').appendChild(tr);
         });
-        qs('empName').value=''; qs('empUser').value=''; qs('empPass').value='';
-        await loadEmployees();
-        setMsg('✅ تم إضافة الموظف', true);
-      }catch(e){
-        setMsg('❌ ' + e.message);
+      } catch (error) {
+        if (String(error.message).includes('Unauthorized')) return go('/admin/login.html');
+        setMsg(error.message);
       }
-    };
+    }
 
-    qs('empBody').onclick = async (e)=>{
-      const btn = e.target.closest('button');
-      if(!btn) return;
-      const id = btn.getAttribute('data-id');
-      const act = btn.getAttribute('data-act');
-      try{
-        setMsg('');
-        if(act === 'toggle'){
-          await api(`/api/admin/employees/${id}/toggle`, { method:'POST' });
-        }else if(act === 'reset'){
-          await api(`/api/admin/employees/${id}/reset-device`, { method:'POST' });
-        }
-        await loadEmployees();
-        setMsg('✅ تم التنفيذ', true);
-      }catch(err){
-        setMsg('❌ ' + err.message);
-      }
-    };
-
-    // init
-    (async ()=>{
-      try{
-        await loadAttendance();
-        await loadEmployees();
-      }catch(e){
-        setMsg('❌ ' + e.message);
-        if(String(e.message).includes('Unauthorized')) go('/admin/login.html');
-      }
-    })();
+    qs('loadBtn').onclick = load;
+    load();
   </script>
 </body>
 </html>

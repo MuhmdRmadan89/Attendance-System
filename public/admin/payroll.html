@@ -1,0 +1,168 @@
+﻿<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#2a8fc4" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>محرك الرواتب - إنجاز</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body class="bg">
+  <div class="shell">
+    <div class="card wide">
+      <div class="top">
+        <div>
+          <h1>محرك الرواتب</h1>
+          <div class="muted">حساب واعتماد صافي الرواتب الشهري</div>
+        </div>
+        <div class="navbar">
+          <button class="link" id="dashboardPage">اللوحة</button>
+          <button class="link" id="employeesPage">الموظفون</button>
+          <button class="link" id="reportsPage">التقارير</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" style="max-width:220px">
+          <label>الشهر</label>
+          <input id="month" type="month" />
+        </div>
+        <button class="btn" id="loadBtn">حساب الرواتب</button>
+      </div>
+
+      <div class="box">
+        <h2>إضافة مكافأة أو خصم</h2>
+        <div class="row">
+          <div class="field"><label>الموظف</label><select id="employeeId"></select></div>
+          <div class="field" style="max-width:160px"><label>النوع</label><select id="type"><option value="bonus">مكافأة</option><option value="deduction">خصم</option></select></div>
+          <div class="field" style="max-width:160px"><label>المبلغ</label><input id="amount" type="number" step="0.01" min="0" /></div>
+          <div class="field"><label>السبب</label><input id="reason" /></div>
+          <div class="field" style="max-width:180px"><label>التاريخ</label><input id="entryDate" type="date" /></div>
+          <button class="btn warning" id="saveFinancialBtn">حفظ القيد</button>
+        </div>
+      </div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الموظف</th>
+              <th>ساعات</th>
+              <th>خصم التأخير</th>
+              <th>مكافآت</th>
+              <th>خصومات يدوية</th>
+              <th>الصافي</th>
+              <th>اعتماد</th>
+            </tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+  <script>
+    if (!ensureAuthOrRedirect('/admin/login.html')) throw new Error('auth required');
+
+    const monthNow = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+    qs('month').value = monthNow();
+    qs('entryDate').value = new Date().toISOString().slice(0, 10);
+
+    qs('dashboardPage').onclick = () => go('/admin/dashboard.html');
+    qs('employeesPage').onclick = () => go('/admin/employees.html');
+    qs('reportsPage').onclick = () => go('/admin/reports.html');
+
+    const money = (v) => Number(v || 0).toFixed(2);
+
+    async function loadEmployees() {
+      const data = await api('/api/admin/employees');
+      qs('employeeId').innerHTML = '';
+      data.rows.filter((r) => r.role === 'employee').forEach((r) => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = `${r.name} (${r.username})`;
+        qs('employeeId').appendChild(opt);
+      });
+    }
+
+    async function loadPayroll() {
+      const month = qs('month').value;
+      const data = await api(`/api/admin/payroll?month=${encodeURIComponent(month)}`);
+      qs('body').innerHTML = '';
+      data.rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.employee.name}</td>
+          <td>${r.totals.workedHours}</td>
+          <td>${money(r.totals.lateDeduction)}</td>
+          <td>${money(r.totals.bonuses)}</td>
+          <td>${money(r.totals.manualDeductions)}</td>
+          <td>${money(r.totals.net)}</td>
+          <td><button class="btn ghost" data-id="${r.employee.id}" data-net="${r.totals.net}">اعتماد</button></td>
+        `;
+        qs('body').appendChild(tr);
+      });
+    }
+
+    qs('loadBtn').onclick = async () => {
+      try { setMsg(''); await loadPayroll(); } catch (error) { setMsg(error.message); }
+    };
+
+    qs('saveFinancialBtn').onclick = async () => {
+      try {
+        setMsg('');
+        await api('/api/admin/financials', {
+          method: 'POST',
+          body: JSON.stringify({
+            employeeId: qs('employeeId').value,
+            type: qs('type').value,
+            amount: Number(qs('amount').value || 0),
+            reason: qs('reason').value.trim(),
+            date: qs('entryDate').value,
+          }),
+        });
+        setMsg('تم حفظ القيد المالي', true);
+        await loadPayroll();
+      } catch (error) {
+        setMsg(error.message);
+      }
+    };
+
+    qs('body').onclick = async (event) => {
+      const btn = event.target.closest('button');
+      if (!btn) return;
+      try {
+        setMsg('');
+        await api('/api/admin/payroll/approve', {
+          method: 'POST',
+          body: JSON.stringify({
+            employeeId: btn.dataset.id,
+            month: qs('month').value,
+            totalNet: Number(btn.dataset.net || 0),
+          }),
+        });
+        setMsg('تم اعتماد الراتب', true);
+      } catch (error) {
+        setMsg(error.message);
+      }
+    };
+
+    (async () => {
+      try {
+        await loadEmployees();
+        await loadPayroll();
+      } catch (error) {
+        if (String(error.message).includes('Unauthorized')) return go('/admin/login.html');
+        setMsg(error.message);
+      }
+    })();
+  </script>
+</body>
+</html>

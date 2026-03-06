@@ -1,57 +1,79 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Employee Login</title>
-  <link rel="stylesheet" href="/assets/css/style.css"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#1f7aa8" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>&#1583;&#1582;&#1608;&#1604; &#1575;&#1604;&#1605;&#1608;&#1592;&#1601; - &#1573;&#1606;&#1580;&#1575;&#1586;</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
 </head>
 <body class="bg">
   <div class="shell">
     <div class="card">
-      <div class="top">
-        <div>
-          <h1>دخول الموظف</h1>
-          <div class="muted">سجّل دخولك ثم سجل حضور/انصراف</div>
-        </div>
+      <h1>&#1578;&#1587;&#1580;&#1610;&#1604; &#1583;&#1582;&#1608;&#1604; &#1575;&#1604;&#1605;&#1608;&#1592;&#1601;</h1>
+      <div class="muted">Password + WebAuthn (&#1576;&#1589;&#1605;&#1577;/&#1608;&#1580;&#1607;)</div>
+
+      <label>&#1575;&#1587;&#1605; &#1575;&#1604;&#1605;&#1587;&#1578;&#1582;&#1583;&#1605;</label>
+      <input id="username" placeholder="emp1" />
+
+      <label>&#1603;&#1604;&#1605;&#1577; &#1575;&#1604;&#1605;&#1585;&#1608;&#1585;</label>
+      <input id="password" type="password" placeholder="******" />
+
+      <button class="btn block" id="loginBtn">&#1583;&#1582;&#1608;&#1604; &#1576;&#1603;&#1604;&#1605;&#1577; &#1575;&#1604;&#1605;&#1585;&#1608;&#1585;</button>
+
+      <div class="box" id="bioBox" style="display:none">
+        <div class="small muted">&#1578;&#1587;&#1580;&#1610;&#1604; &#1583;&#1582;&#1608;&#1604; &#1587;&#1585;&#1610;&#1593; &#1576;&#1575;&#1604;&#1576;&#1589;&#1605;&#1577;</div>
+        <button class="btn block ghost" id="bioBtn">&#1583;&#1582;&#1608;&#1604; WebAuthn</button>
       </div>
 
-      <label>Username</label>
-      <input id="username" placeholder="مثال: emp1"/>
-
-      <label>Password</label>
-      <input id="password" type="password" placeholder="••••••"/>
-
-      <button class="btn block" id="btn">دخول</button>
       <div class="msg" id="msg"></div>
-
-      <div class="muted small" style="margin-top:10px">Demo: emp1 / 123456</div>
     </div>
   </div>
 
+  <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.umd.min.js"></script>
   <script src="/assets/js/common.js"></script>
   <script>
-    qs('btn').onclick = async () => {
-      try{
+    const cachedUser = localStorage.getItem('last_user');
+    if (cachedUser) qs('bioBox').style.display = 'block';
+
+    qs('loginBtn').onclick = async () => {
+      try {
         setMsg('');
         const username = qs('username').value.trim();
         const password = qs('password').value;
-        const deviceId = getDeviceId();
-
         const data = await api('/api/auth/login', {
-          method:'POST',
-          body: JSON.stringify({ username, password, deviceId })
+          method: 'POST',
+          body: JSON.stringify({ username, password, deviceId: getDeviceId() }),
         });
 
-        if(data.user.role !== 'employee'){
-          clearAuth();
-          return setMsg('هذا الحساب ليس موظف');
-        }
+        saveToken(data.accessToken);
+        localStorage.setItem('last_user', username);
+        go(data.user.role === 'admin' ? '/admin/dashboard.html' : '/employee/attendance.html');
+      } catch (error) {
+        setMsg(error.message);
+      }
+    };
+
+    qs('bioBtn').onclick = async () => {
+      try {
+        setMsg('');
+        const { startAuthentication } = SimpleWebAuthnBrowser;
+        const username = cachedUser;
+        const options = await api('/api/webauthn/login-options', {
+          method: 'POST',
+          body: JSON.stringify({ username }),
+        });
+        const authResponse = await startAuthentication(options);
+        const data = await api('/api/webauthn/login-verify', {
+          method: 'POST',
+          body: JSON.stringify({ username, body: authResponse, deviceId: getDeviceId() }),
+        });
 
         saveToken(data.accessToken);
-        go('/employee/attendance.html');
-      }catch(e){
-        setMsg('❌ ' + e.message);
+        go(data.user.role === 'admin' ? '/admin/dashboard.html' : '/employee/attendance.html');
+      } catch (error) {
+        setMsg(error.message);
       }
     };
   </script>

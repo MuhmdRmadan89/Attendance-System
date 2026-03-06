@@ -1,0 +1,85 @@
+﻿<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#1f7aa8" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>التقارير - إنجاز</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+</head>
+<body class="bg">
+  <div class="shell">
+    <div class="card">
+      <div class="top">
+        <div>
+          <h1>التقارير</h1>
+          <div class="muted">تصدير Excel شامل للحضور والرواتب</div>
+        </div>
+        <div>
+          <button class="link" id="dashboardPage">اللوحة</button>
+          <button class="link" id="employeesPage">الموظفون</button>
+          <button class="link" id="payrollPage">الرواتب</button>
+        </div>
+      </div>
+
+      <label>من تاريخ</label>
+      <input type="date" id="from" />
+
+      <label>إلى تاريخ</label>
+      <input type="date" id="to" />
+
+      <button class="btn block" id="exportBtn">تصدير Excel</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+  <script>
+    if (!ensureAuthOrRedirect('/admin/login.html')) {
+      throw new Error('auth required');
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    qs('from').value = today;
+    qs('to').value = today;
+
+    qs('dashboardPage').onclick = () => go('/admin/dashboard.html');
+    qs('employeesPage').onclick = () => go('/admin/employees.html');
+    qs('payrollPage').onclick = () => go('/admin/payroll.html');
+
+    qs('exportBtn').onclick = async () => {
+      try {
+        setMsg('');
+        const from = qs('from').value;
+        const to = qs('to').value;
+        const token = getToken();
+
+        const res = await fetch(`/api/admin/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) {
+          let payload = {};
+          try {
+            payload = await res.json();
+          } catch {}
+          throw new Error(payload.error || 'Export failed');
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `injaz_report_${from}_to_${to}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        setMsg('تم تحميل التقرير', true);
+      } catch (error) {
+        setMsg(error.message);
+      }
+    };
+  </script>
+</body>
+</html>
